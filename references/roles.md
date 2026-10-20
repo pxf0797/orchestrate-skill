@@ -1,11 +1,18 @@
 # 角色提示词骨架
 
 拼 `agent()` 的 prompt 时，取对应角色的四段（目标/必须/禁止/输出），再接任务细节。
-三条通用前提，不必每个角色重复写：
 
-- 你看不到主对话，prompt 里给的信息就是全部；缺信息就直接用工具查，查不到就在输出里写"未确认"。
-- 你不能派发子 Agent，不能调用 workflow；需要更多信息就自己读/跑。
-- 完成后只返回约定的结构，大段内容写文件并给路径。
+**下面三条必须拼进每个 `agent()` 的 prompt**，不能只写在文档里——子 Agent 看不到主对话，也不会自己去翻技能目录：
+
+```js
+const PRE = [
+  "你看不到主对话，本 prompt 就是全部信息；缺信息用工具查，查不到写「未确认」。",
+  "你不能派发子 Agent，不能调用 workflow。",
+  "大段内容写文件并给路径，回复不超过 200 字。"
+].join("\n");
+```
+
+（`recipes.md` 的每份脚本里都带了这个常量，改配方时不要删。）
 
 ---
 
@@ -24,7 +31,7 @@
 [目标] 把需求拆成可并行的模块，并定义模块间契约。
 [必须] 给出函数签名/数据结构/错误语义；给每个模块的文件白名单与二元完成标准。
 [禁止] 不写实现代码；不设计跨模块共享的可变状态。
-[输出] 固定 schema（见 recipes.md 的 PLAN）；附 3 条主要风险。
+[输出] JSON：{ contracts: string, modules: [{ name: string, files: string[], done_when: string[] }] }；附 3 条主要风险。
 ```
 
 ## builder — 实现
@@ -42,7 +49,7 @@
 [目标] 判定产出是否满足完成标准。
 [必须] 先逐条对照完成标准（任一不满足即 pass=false，不进深度评审）；每个 issue 给位置与可执行修法。
 [禁止] 不修改任何文件；不给"总体感觉不错"这类无依据结论；不与产出者协商。
-[输出] {pass, score, issues[], summary} 的 JSON（见 verify.md）。
+[输出] JSON：{ pass: boolean, score: number, issues: [{ severity: "critical"|"major"|"minor", where: string, problem: string, fix: string }], summary: string }。
 ```
 
 ## critic — 对抗（只批判）

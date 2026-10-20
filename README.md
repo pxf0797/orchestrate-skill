@@ -70,16 +70,16 @@ Plan（自己做）  →  Dispatch（workflow 脚本）  →  Verify（独立 Ag
 ## 文件结构
 
 ```
-SKILL.md                124 行   四阶段协议、硬约束、反模式
+SKILL.md                131 行   四阶段协议、硬约束、反模式
 references/
-├── recipes.md          327 行   并行调研 / 代码开发 / 批量审计 / 对抗验证 / 方案选优
+├── recipes.md          533 行   5 份可跑脚本（含缺参/空结果/票数守卫）
 ├── playbooks.md         93 行   4 个场景的阶段骨架
-├── roles.md             82 行   6 个角色的提示词骨架
-├── verify.md            81 行   验收判据与判决 schema
-└── recovery.md          71 行   失败分级、重试预算、跨轮恢复
+├── roles.md             89 行   6 个角色的提示词骨架 + 公共 PRE 前缀
+├── verify.md            84 行   验收判据与判决 schema
+└── recovery.md          75 行   失败分级、重试预算、跨轮恢复
 ```
 
-主文件只有 124 行：DSH 的 `skill` 工具按需加载，细节全部推给 references。
+主文件只有 131 行：DSH 的 `skill` 工具按需加载，细节全部推给 references。
 
 ## 与内置工具的分工
 

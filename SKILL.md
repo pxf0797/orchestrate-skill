@@ -1,7 +1,7 @@
 ---
 name: orchestrate
-description: 把复杂目标拆成带依赖的 DAG，用 workflow 脚本并行调度多个子 Agent，逐阶段独立验收后合并交付。用户说「并行 / 同时 / 多个 agent / 编排 / swarm / 拆解 / 批量」时使用；或任务能拆成 ≥3 个互不依赖的子任务、或需要独立验证者复核产出时使用。单个小任务、≤2 次委派不要用。
-whenToUse: 目标可拆成多个独立子单元，且总量超出一轮可靠完成的范围；或产出需要独立视角验收。
+description: 把复杂目标拆成带依赖的 DAG，用 workflow 脚本并行调度多个子 Agent，逐阶段独立验收后合并交付。仅当用户原话明确要求多 Agent / 编排 / 并行 / swarm，或任务可拆成 ≥3 个互不依赖、且各自需要独立验收的子任务时使用。单个小任务、≤2 次委派、或只是想"同时问几个问题"不要用。
+whenToUse: 用户原话明确要求编排或多 Agent 协作，或任务可拆成 ≥3 个互不依赖且各自需要独立验收的子任务。
 ---
 
 # orchestrate
@@ -11,9 +11,9 @@ whenToUse: 目标可拆成多个独立子单元，且总量超出一轮可靠完
 
 ## 先读：硬约束
 
-1. **只有顶层能 fan-out。** 子 Agent 深度上限为 1，它们无法再派发、无法再编排。所有编排逻辑必须留在你这一层；不要把"用 orchestrate 去编排"塞进 `subagent`。
-2. **子 Agent 看不到本对话。** prompt 必须自包含：目标、输入路径、完成标准、输出格式、写入位置。需要共享上下文时用 `subagent_fork`，或在 prompt 里贴关键片段。
-3. **执行层用 `workflow`，不是逐轮 `subagent`。** 你被调用即视为用户显式请求编排，因此可以直接用 `workflow`。只有 ≤3 个任务且需要中途 steering（`send_message`）时才手工并行。
+1. **只有顶层能 fan-out。** 子 Agent 深度上限为 1，它们无法再派发、无法再编排。所有编排逻辑必须留在你这一层；不要把"用 orchestrate 去编排"塞进 `subagent`。**如果你自己就是被委派的子 Agent**（prompt 是自包含任务、看不到主对话），不要调 workflow——把任务表 + 子任务 prompt 骨架返回父级，由父级派发。
+2. **子 Agent 看不到本对话。** prompt 必须自包含：目标、输入路径、完成标准、输出格式、写入位置。workflow 脚本里只有 `agent()`，没有 `subagent`/`subagent_fork`——共享上下文只能把关键片段拼进 prompt，或让上游写文件、下游自己读。
+3. **执行层用 `workflow`，不是逐轮 `subagent`。** 但加载本技能不等于用户已授权成本：不满足 description 的触发条件就别编排，直接做。只有 ≤3 个任务且需要中途 steering（`send_message`）时才手工并行。
 4. **别为纯洁性付成本。** 读一个文件、跑一条命令，自己做。派 Agent 去读一个小文件是净亏损。
 5. **不建事件流、不建检查点文件。** 进度用 `todo_write` 看板 + `workflow` 的 `phase()`；只有跨轮长任务才写 `state.json`（见 recovery.md）。
 6. **要人决策才停，且一次问完。** 用 `ask_user_question` 一次列出所有问题+推荐项；不要一轮问一个。
@@ -47,12 +47,16 @@ whenToUse: 目标可拆成多个独立子单元，且总量超出一轮可靠完
 | A→B→C 串行 | 顺序 `await agent(...)` |
 | 每个对象都走同一套阶段 | `await pipeline(items, stage1, stage2)` |
 | 先扇出再汇合 | `parallel(...)` 之后再 `await agent(汇总)` |
-| 按判决分支 | `if (verdict.pass) ... else ...` |
+| 按判决分支 | 先算出 `pass` 再 `if (pass) … else …`；判决布尔由脚本按 checks 计算，别直接采信 Agent 自报 |
 
 脚本规矩：
-- `agent()` 失败返回 `null`，必须 `.filter(Boolean)`；缺口要 `log()` 说明，不要静默丢。
+- `parallel` 有栅栏：跨项汇总、去重、排序、全局裁剪必须放在它之后。
+- `pipeline` 无栅栏：阶段 N 只能看到本项的 `prev`，必须显式处理 `prev === null`；拿不准就用 `parallel` + 汇总 agent。
+- `agent()` 失败返回 `null`：要么 `.filter(Boolean)`（可降级场景），要么 `if (!x) return { ok: false, ... }`（不可降级）——不允许"半成功"返回 `ok: true`。
+- 入参一律 `args?.x` 判空后 `return { ok: false, error }`；`args` 省略时是 `undefined`，直接取属性会先抛 TypeError，调用方拿到的只有 `stopReason=error`。
 - 需要结构化结果就传 `schema`，别让 Agent 返回自由文本再人工解析。schema 只允许 `type/properties/required/additionalProperties/items/enum/const/oneOf` —— 加 `description` 会让整个脚本失败。
 - 返回值有界：`return` 一个摘要对象 + 产物文件路径，不要把整篇正文塞进返回值。
+- 每段 prompt 以 `PRE` 开头（见 [roles.md](references/roles.md)）：说清"看不到主对话 / 不能派发 / 大段内容写文件"。
 - 脚本里没有 fs/网络/定时器；读写文件、跑命令都是 Agent 的事。
 - 用 `phase()` 分段、`log()` 叙述；`args` 是调用方传入的入参。
 
@@ -70,7 +74,8 @@ whenToUse: 目标可拆成多个独立子单元，且总量超出一轮可靠完
 | `adversarial` | 事实核查、安全审查 | 3 个 critic 只批判不修正，≥2 票无严重问题 |
 
 判决用 schema 拿：`{pass, score, issues[], summary}`。
-`pass=false` → 带 `issues` 原文回退给产出者改一次；二次仍不过 → 按 [references/recovery.md](references/recovery.md) 升级。
+`pass=false` → 带 `issues` 原文回退给产出者，**最多修正 2 轮**；第 3 次仍不过 → 按 [references/recovery.md](references/recovery.md) 交人或回 Plan，不要原样再验。
+能自动化判定的验收（测试全绿、diff 只落在白名单、字段齐全），让 verifier 跑命令给证据，不要只让它读描述下结论。
 **融合、改写交给另一个 writer，不要让 verifier 顺手改**——否则等于自我批准。
 
 ## 第 4 步：Merge（交付）
@@ -95,11 +100,13 @@ whenToUse: 目标可拆成多个独立子单元，且总量超出一轮可靠完
 
 | 现象 | 动作 |
 |---|---|
-| `agent()` 返回 null | 补上下文重试 1 次；仍 null → critical 的停下问人，非 critical 跳过并标注 |
-| 同一 verifier 连续 2 次 fail | 换角度重判一次；仍 fail → 交人，附两份判决 |
+| `agent()` 返回 null | 换输入重试，上限 2 次；仍 null → critical 停下问人，非 critical 跳过并标注 |
+| 同一产出修正 2 轮仍不过 | 第 3 次交人，附两份判决；不要再原样重验 |
 | ≥2 个并行任务同一原因失败 | 停止扇出，回 Plan（这是拆法错了，不是运气差） |
-| 实际耗时 > 预估 3 倍 | 中断，报告已完成部分，问是否继续 |
+| 实际耗时 > 预估 3 倍 | 后台运行可 `job_kill(<job_id>)`；前台 workflow 发出后无法取消——等它返回，然后停止后续派发并报告已完成部分 |
 | 用户中途改需求 | 停止新派发，等运行中的返回，再重排 DAG |
+
+预算口径（与 [recovery.md](references/recovery.md) 同一套，不要各处改）：**修正 2 轮、null 重试 2 次、整轮 workflow 重跑 1 次**。
 
 细节与跨轮恢复：[references/recovery.md](references/recovery.md)
 
