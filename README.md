@@ -81,6 +81,12 @@ references/
 
 主文件只有 131 行：DSH 的 `skill` 工具按需加载，细节全部推给 references。
 
+脚本配方带回归测试（20 个用例，用桩函数跑 `parallel`/`pipeline`，不消耗子 Agent）：
+
+```bash
+npm test
+```
+
 ## 与内置工具的分工
 
 | 工具 | 职责 |
