@@ -1,3 +1,9 @@
+> **⚠️ 已归档（2026-10-22）**
+>
+> 本 skill 已下线。可用的部分（判决 schema、退回原文回灌模板、prompt 三句前置、三类重试预算、成本护栏）已并入
+> [multi-agent-orchestrator-dsh](https://github.com/pxf0797/multi-agent-orchestrator-dsh)。
+> DSH 上请只安装后者——两个同时安装会出现"要不要落 checkpoint"的协议冲突。
+
 # orchestrate
 
 一个 DeepSeek Harness（DSH）原生的多 Agent 编排技能：**拆目标 → 排依赖 → 并行派发 → 独立验收 → 合并交付**。
